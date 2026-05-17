@@ -24,6 +24,10 @@ from .permissions import IsSellerOrAdmin, IsOwnerOrAdmin, ReadOnlyOrSeller
 from .filters import PlantFilter
 from .tasks import send_order_confirmation_email
 from .serializers import VerifyEmailSerializer
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+
 
 
 @extend_schema(tags=['Auth'])
@@ -31,6 +35,58 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserRegisterSerializer
     permission_classes = [AllowAny]
+
+
+@extend_schema(tags=['Auth'])
+class ForgotPasswordView(generics.GenericAPIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email')
+        try:
+            user = User.objects.get(email=email)
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            from .tasks import send_reset_password_email
+            send_reset_password_email.delay(email, uid, token)
+        except User.DoesNotExist:
+            pass  
+        return Response({'detail': 'If this email exists, a reset link was sent.'})
+    
+
+@extend_schema(tags=['Auth'])
+class ChangePasswordView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        old_password = request.data.get('old_password')
+        new_password = request.data.get('new_password')
+        if not user.check_password(old_password):
+            return Response({'detail': 'Wrong current password.'}, status=400)
+        user.set_password(new_password)
+        user.save()
+        return Response({'detail': 'Password changed successfully.'})
+    
+
+@extend_schema(tags=['Auth'])
+class ResetPasswordView(generics.GenericAPIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        uid   = request.data.get('uid')
+        token = request.data.get('token')
+        password = request.data.get('password')
+        try:
+            pk   = force_str(urlsafe_base64_decode(uid))
+            user = User.objects.get(pk=pk)
+            if not default_token_generator.check_token(user, token):
+                return Response({'detail': 'Invalid or expired link.'}, status=400)
+            user.set_password(password)
+            user.save()
+            return Response({'detail': 'Password reset successfully.'})
+        except Exception:
+            return Response({'detail': 'Invalid link.'}, status=400)
 
 
 @extend_schema(tags=['Auth'])

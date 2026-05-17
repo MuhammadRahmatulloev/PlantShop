@@ -28,3 +28,14 @@ def clear_plants_cache():
     from django.core.cache import cache
     cache.delete('plants_list')
     cache.delete('categories')
+
+
+@shared_task
+def send_reset_password_email(user_email, uid, token):
+    reset_link = f'http://localhost:5173/reset-password?uid={uid}&token={token}'
+    send_mail(
+        subject='PlantShop — Password Reset',
+        message=f'Click the link to reset your password:\n\n{reset_link}\n\nLink expires in 1 hour.',
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[user_email],
+    )

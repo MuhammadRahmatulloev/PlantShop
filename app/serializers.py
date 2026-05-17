@@ -9,7 +9,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'phone', 'password', 'password_confirm']
+        fields = ['id', 'username', 'email', 'phone', 'role', 'password', 'password_confirm']  
 
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
@@ -20,7 +20,9 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         from .tasks import send_verification_email
         validated_data.pop('password_confirm')
         code = str(random.randint(100000, 999999))
+        role = validated_data.pop('role', 'client')
         user = User.objects.create_user(**validated_data)
+        user.role = role
         user.verification_code = code
         user.is_active = False
         user.save()
@@ -34,10 +36,10 @@ class VerifyEmailSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=6)
 
     def validate(self, attrs):
-        try:
-            user = User.objects.get(email=attrs['email'])
-        except User.DoesNotExist:
+        users = User.objects.filter(email=attrs['email']).order_by('-id')
+        if not users.exists():
             raise serializers.ValidationError({'email': 'User not found.'})
+        user = users.first()
         if user.verification_code != attrs['code']:
             raise serializers.ValidationError({'code': 'Invalid code.'})
         attrs['user'] = user

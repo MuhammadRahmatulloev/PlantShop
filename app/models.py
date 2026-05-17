@@ -13,6 +13,7 @@ class User(AbstractUser):
     avatar = models.ImageField(upload_to='avatars/', blank=True)
     is_verified = models.BooleanField(default=False)
     verification_code = models.CharField(max_length=6, blank=True)
+    email = models.EmailField(unique=True)  
 
 
 class Category(models.Model):
